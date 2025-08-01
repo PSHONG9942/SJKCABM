@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生作业点名系统</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用“楷体”作为主要字体 */
+        body {
+            font-family: 'KaiTi', '楷体', 'STKaiti', sans-serif;
+            background-color: #f7f9fc;
+            color: #333;
+        }
+        /* 使占位符文本变成斜体 */
+        textarea::placeholder {
+            font-style: italic;
+        }
+        /* 隐藏打印时的输入和按钮，只显示名单 */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+                font-size: 1.25rem;
+                font-weight: bold;
+                text-align: center;
+                margin-bottom: 1rem;
+            }
+            body {
+                background-color: white;
+            }
+            #list-container {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+            }
+            /* 优化打印时的行间距 */
+            .student-row {
+                border-bottom: 1px solid #e2e8f0;
+                padding: 0.1rem 0; /* 减小行内上下间距 */
+            }
+            /* 优化打印时的表头间距 */
+            .list-header {
+                padding: 0.1rem 1rem; /* 减小表头上下间距 */
+                gap: 0.5rem; /* 减小列间距 */
+            }
+            .student-row {
+                gap: 0.5rem; /* 减小列间距 */
+            }
+        }
+        /* 确保打印标题默认隐藏 */
+        .print-only {
+            display: none;
+        }
+        /* 列表项的网格布局，确保三列对齐 */
+        .list-header, .student-row {
+            display: grid;
+            grid-template-columns: 0.5fr 3fr 1fr;
+            gap: 1rem;
+            align-items: center;
+            padding: 0.75rem 1rem;
+        }
+        /* 列表头部的特殊样式 */
+        .list-header {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            border-bottom: 2px solid #cbd5e1;
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+        }
+        /* 点名按钮的默认样式 */
+        .toggle-btn {
+            background-color: #ef4444; /* 红色：未提交 */
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px; /* 药丸形状 */
+            border: none;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        /* 点名按钮的已提交状态样式 */
+        .toggle-btn.submitted {
+            background-color: #22c55e; /* 绿色：已提交 */
+        }
+        /* 优化打印时的按钮和文本显示 */
+        .toggle-btn::after {
+            content: "未交";
+        }
+        .toggle-btn.submitted::after {
+            content: "已交";
+        }
+        @media print {
+            .toggle-btn, .toggle-btn.submitted {
+                background: none;
+                color: #000;
+                padding: 0;
+                box-shadow: none;
+            }
+            .toggle-btn::after {
+                content: "未交";
+            }
+            .toggle-btn.submitted::after {
+                content: "✔ 已交";
+                color: #22c55e;
+            }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-2xl mx-auto bg-white p-6 rounded-3xl shadow-xl">
+        <h1 class="text-3xl font-bold text-center mb-6 no-print">学生作业点名系统</h1>
+        
+        <!-- 打印时显示的标题 -->
+        <div class="print-only"></div>
+
+        <!-- 输入部分 -->
+        <div id="input-section" class="no-print mb-6">
+            <label for="student-names" class="block text-lg font-medium mb-2">
+                请输入学生姓名，每行一个（最多40个）
+            </label>
+            <textarea id="student-names" rows="10" placeholder="例如：
+小白
+小明
+小丽
+..." class="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors duration-200 resize-none"></textarea>
+            <button id="generate-list-btn" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-700 transition-all duration-200 transform hover:scale-105 active:scale-95">
+                生成名单
+            </button>
+        </div>
+
+        <!-- 输出部分 - 动态生成学生名单 -->
+        <div id="list-container" class="mt-8 border-2 border-gray-200 rounded-lg hidden">
+            <div class="list-header text-center">
+                <span>序号</span>
+                <span>学生姓名</span>
+                <span>作业呈交</span>
+            </div>
+            <!-- 学生名单将在此处生成 -->
+        </div>
+
+        <!-- 打印按钮 -->
+        <div class="mt-6 flex justify-center no-print">
+            <button id="print-btn" class="bg-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-green-700 transition-all duration-200 transform hover:scale-105 active:scale-95 hidden">
+                打印名单 (PDF)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const generateBtn = document.getElementById('generate-list-btn');
+        const printBtn = document.getElementById('print-btn');
+        const nameTextarea = document.getElementById('student-names');
+        const listContainer = document.getElementById('list-container');
+        const printTitleDiv = document.querySelector('.print-only');
+        
+        // 生成学生名单的函数
+        function generateList() {
+            // 获取并分割输入的姓名，过滤掉空行和多余的空格
+            const names = nameTextarea.value
+                .split('\n')
+                .map(name => name.trim())
+                .filter(name => name.length > 0);
+            
+            // 清空旧名单，并保留头部
+            listContainer.innerHTML = `
+                <div class="list-header text-center">
+                    <span>序号</span>
+                    <span>学生姓名</span>
+                    <span>作业呈交</span>
+                </div>
+            `;
+            
+            // 如果有姓名，则生成新名单
+            if (names.length > 0) {
+                names.forEach((name, index) => {
+                    // 为每个学生创建一行
+                    const studentRow = document.createElement('div');
+                    studentRow.className = 'student-row transition-colors duration-200';
+                    
+                    // 创建点名按钮
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.className = 'toggle-btn';
+                    toggleBtn.setAttribute('data-submitted', 'false'); // 初始状态为未提交
+                    
+                    // 点击按钮切换状态
+                    toggleBtn.addEventListener('click', () => {
+                        const isSubmitted = toggleBtn.getAttribute('data-submitted') === 'true';
+                        if (isSubmitted) {
+                            toggleBtn.setAttribute('data-submitted', 'false');
+                            toggleBtn.classList.remove('submitted');
+                        } else {
+                            toggleBtn.setAttribute('data-submitted', 'true');
+                            toggleBtn.classList.add('submitted');
+                        }
+                    });
+                    
+                    // 填充学生信息到行中
+                    studentRow.innerHTML = `
+                        <span class="text-gray-600">${index + 1}</span>
+                        <span class="text-gray-900 font-medium text-center">${name}</span>
+                    `;
+                    studentRow.appendChild(toggleBtn);
+                    
+                    listContainer.appendChild(studentRow);
+                });
+                
+                // 显示名单容器和打印按钮
+                listContainer.classList.remove('hidden');
+                printBtn.classList.remove('hidden');
+            } else {
+                // 如果没有姓名，则隐藏名单和打印按钮
+                listContainer.classList.add('hidden');
+                printBtn.classList.add('hidden');
+            }
+        }
+        
+        // 绑定事件监听器
+        generateBtn.addEventListener('click', generateList);
+        
+        // 打印名单的函数
+        printBtn.addEventListener('click', () => {
+            const printTitle = prompt("请输入打印页面的标题:", "学生作业呈交名单");
+            if (printTitle !== null) {
+                printTitleDiv.textContent = printTitle;
+                window.print();
+            }
+        });
+    </script>
+</body>
+</html>
